@@ -108,7 +108,7 @@ if st.button("🚀 Run Screener Now"):
         
         passed_df = fund_df.loc[fund_df['PE_Pass']]
         
-        # --- THE FIX: Explicitly selecting the 'Symbol' column before turning to list ---
+        # --- THE FIX: Explicitly selecting the 'Symbol' column ---
         passed_fundamental_symbols = passed_df.tolist()
         
     if not passed_fundamental_symbols:
