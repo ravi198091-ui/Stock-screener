@@ -196,7 +196,7 @@ if st.button("🚀 Run Screener Now"):
             final_df = pd.merge(final_df, fund_df, on='Symbol', how='left')
             
             if 'Avg_Delivery_%' in final_df.columns:
-                # --- THE FIX: Explicitly selecting the column for the math check ---
+                # --- THE SECOND FIX: Explicitly selecting the specific column for the > 45.0 check ---
                 delivery_mask = final_df > 45.0
                 final_screened = final_df.loc[delivery_mask].copy().round(2)
                 
