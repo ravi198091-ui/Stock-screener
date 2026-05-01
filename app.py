@@ -107,6 +107,8 @@ if st.button("🚀 Run Screener Now"):
         fund_df['PE_Pass'] = np.where(fund_df['PE'].notna() & (condition1 | condition2), True, False)
         
         passed_df = fund_df.loc[fund_df['PE_Pass']]
+        
+        # --- THE REAL FIX IS HERE ---
         passed_fundamental_symbols = passed_df.tolist()
         
     if not passed_fundamental_symbols:
