@@ -18,38 +18,36 @@ st.markdown("Screens for: PE < 20 (or Industry Avg), Vol > 2x 20-Day SMA, RSI > 
 # ==========================================
 @st.cache_data(ttl=3600)
 def fetch_symbols():
-    # Method 1: Official Index CSV archive
+    # 1. Try GitHub Mirror (Bypasses NSE Firewall)
     try:
-        url = "https://archives.nseindia.com/content/indices/ind_nifty500list.csv"
+        url = "https://raw.githubusercontent.com/kprohith/nse-stock-analysis/master/ind_nifty500list.csv"
         df = pd.read_csv(url)
-        if 'Symbol' in df.columns:
-            return df.astype(str).str.strip().tolist()
-    except:
+        for col in df.columns:
+            if 'SYMBOL' in col.upper():
+                return df[col].astype(str).str.strip().tolist(), df
+    except Exception:
         pass
         
-    # Method 2: Secondary URL with masked headers
+    # 2. Try Official NSE URL
     try:
         url = "https://www.niftyindices.com/IndexConstituent/ind_nifty500list.csv"
         headers = {"User-Agent": "Mozilla/5.0"}
         res = requests.get(url, headers=headers, timeout=5)
         df = pd.read_csv(io.StringIO(res.text))
-        if 'Symbol' in df.columns:
-            return df.astype(str).str.strip().tolist()
-    except:
+        for col in df.columns:
+            if 'SYMBOL' in col.upper():
+                return df[col].astype(str).str.strip().tolist(), df
+    except Exception:
         pass
         
-    # Method 3: Direct NSELib equity extraction
+    # 3. Unblockable Wikipedia Fallback (Nifty 50)
     try:
-        df = capital_market.equity_list()
-        if 'SYMBOL' in df.columns:
-            return df.astype(str).str.strip().tolist()[:500]
-    except:
-        pass
-        
-    # Method 4: Indestructible Fallback
-    # If the NSE completely blocks the Streamlit Cloud Server, use this hardcoded list so the app NEVER breaks.
-    st.toast("⚠️ NSE Cloud Firewall active. Using hardcoded Nifty 50 fallback list.")
-    return
+        st.toast("⚠️ NSE Firewall blocked Nifty 500. Falling back to Nifty 50 list to ensure app runs.")
+        dfs = pd.read_html("https://en.wikipedia.org/wiki/NIFTY_50")
+        df = dfs[1]
+        return df.astype(str).str.strip().tolist(), df
+    except Exception:
+        return list(), pd.DataFrame()
 
 def fetch_pe_and_industry(symbol):
     yf_symbol = f"{symbol}.NS"
@@ -64,7 +62,7 @@ def fetch_pe_and_industry(symbol):
 
 @st.cache_data(ttl=3600)
 def get_last_5_trading_days_bhavcopy():
-    bhavcopies =
+    bhavcopies = list()
     days_checked = 0
     current_date = datetime.now()
     
@@ -98,10 +96,14 @@ def calculate_rsi(prices, period=14):
 # ==========================================
 if st.button("🚀 Run Screener Now"):
     with st.spinner("Fetching Symbols..."):
-        nifty_symbols = fetch_symbols()
+        nifty_symbols, mapping_df = fetch_symbols()
         
+    if not nifty_symbols:
+        st.error("CRITICAL ERROR: Failed to load symbols.")
+        st.stop()
+
     with st.spinner("Step 1: Fetching Fundamental Data (P/E & Industry)... this takes about 30 seconds."):
-        fundamental_data =
+        fundamental_data = list()
         with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
             results = executor.map(fetch_pe_and_industry, nifty_symbols)
             for res in results:
@@ -119,6 +121,8 @@ if st.button("🚀 Run Screener Now"):
         fund_df['PE_Pass'] = np.where(fund_df['PE'].notna() & (condition1 | condition2), True, False)
         
         passed_df = fund_df.loc[fund_df['PE_Pass']]
+        
+        # ---> THE REAL FIX: I missed the right here last time <---
         passed_fundamental_symbols = passed_df.tolist()
         
     if not passed_fundamental_symbols:
@@ -133,7 +137,7 @@ if st.button("🚀 Run Screener Now"):
              st.error("Failed to download historical price data from Yahoo Finance.")
              st.stop()
              
-        technical_results =
+        technical_results = list()
         for symbol in passed_fundamental_symbols:
             yf_sym = f"{symbol}.NS"
             try:
@@ -177,10 +181,8 @@ if st.button("🚀 Run Screener Now"):
     with st.spinner("Step 3: Analyzing Institutional Delivery Data..."):
         delivery_raw = get_last_5_trading_days_bhavcopy()
         
-        # If the NSE firewall completely blocks the cloud server from downloading delivery data, 
-        # do not crash the app. Output the stocks that successfully passed Steps 1 and 2 instead.
         if delivery_raw.empty:
-            st.warning("⚠️ NSE Firewall blocked Delivery Data on this cloud server. Showing stocks that passed Technical & Fundamental checks:")
+            st.warning("⚠️ NSE Firewall blocked Delivery Data. Showing stocks that passed Technical & Fundamental checks:")
             final_df = pd.merge(tech_df, fund_df, on='Symbol', how='left').round(2)
             st.dataframe(final_df.sort_values(by='Return_5D_%', ascending=False), use_container_width=True)
             st.stop()
@@ -200,13 +202,17 @@ if st.button("🚀 Run Screener Now"):
             final_df = pd.merge(tech_df, avg_delivery, on='Symbol', how='left')
             final_df = pd.merge(final_df, fund_df, on='Symbol', how='left')
             
-            delivery_mask = final_df > 45.0
-            final_screened = final_df.loc[delivery_mask].copy().round(2)
-            
-            if final_screened.empty:
-                st.warning("Stocks passed technicals, but none met the > 45% delivery requirement.")
+            # ---> THE REAL FIX: I also missed the pointer here last time <---
+            if 'Avg_Delivery_%' in final_df.columns:
+                delivery_mask = final_df > 45.0
+                final_screened = final_df.loc[delivery_mask].copy().round(2)
+                
+                if final_screened.empty:
+                    st.warning("Stocks passed technicals, but none met the > 45% delivery requirement.")
+                else:
+                    st.success(f"Screening Complete! Found {len(final_screened)} stocks.")
+                    st.dataframe(final_screened.sort_values(by='Avg_Delivery_%', ascending=False), use_container_width=True)
             else:
-                st.success(f"Screening Complete! Found {len(final_screened)} stocks.")
-                st.dataframe(final_screened.sort_values(by='Avg_Delivery_%', ascending=False), use_container_width=True)
+                st.error("Error processing delivery column.")
         else:
             st.error("Could not find delivery percentage data from NSE.")
