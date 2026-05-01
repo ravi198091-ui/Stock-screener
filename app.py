@@ -24,7 +24,8 @@ def fetch_nifty500_symbols():
         response = requests.get(url, headers=headers, timeout=10)
         if response.status_code == 200:
             df = pd.read_csv(io.StringIO(response.text))
-            symbols = df.Symbol.astype(str).str.strip().tolist()
+            # Specify the Symbol column
+            symbols = df.astype(str).str.strip().tolist()
             return symbols, df
         return list(), pd.DataFrame()
     except Exception:
@@ -103,6 +104,8 @@ if st.button("🚀 Run Screener Now"):
         fund_df['PE_Pass'] = np.where(fund_df['PE'].notna() & (condition1 | condition2), True, False)
         
         passed_df = fund_df.loc[fund_df['PE_Pass']]
+        
+        # --- FIX 1: Point exactly to the 'Symbol' column ---
         passed_fundamental_symbols = passed_df.tolist()
 
     with st.spinner(f"Step 2: Checking Technicals for {len(passed_fundamental_symbols)} stocks..."):
@@ -135,7 +138,6 @@ if st.button("🚀 Run Screener Now"):
                 avg_vol_20d = float(volumes.rolling(window=20).mean().iloc[-2])
                 current_rsi = float(calculate_rsi(close_prices).iloc[-1])
                 
-                # Split into short lines for tablet formatting
                 vol_pass = last_volume > (2 * avg_vol_20d)
                 rsi_pass = current_rsi > 50
                 ret_pass = return_5d >= 1.0
@@ -178,8 +180,8 @@ if st.button("🚀 Run Screener Now"):
             
             final_df = pd.merge(tech_df, avg_delivery, on='Symbol', how='left')
             final_df = pd.merge(final_df, fund_df, on='Symbol', how='left')
-            
-            # Specifically filter the numeric delivery column
+
+# --- FIX 2: Point exactly to the 'Avg_Delivery_%' column ---
             delivery_mask = final_df > 45.0
             final_screened = final_df.loc[delivery_mask].copy().round(2)
             
