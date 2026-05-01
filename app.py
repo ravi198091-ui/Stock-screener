@@ -18,7 +18,7 @@ st.markdown("Screens for: PE < 20 (or Industry Avg), Vol > 2x 20-Day SMA, RSI > 
 # ==========================================
 @st.cache_data(ttl=3600)
 def fetch_symbols():
-    # 1. Try GitHub Mirror (Bypasses NSE Firewall)
+    # Method 1: Try GitHub Mirror (Bypasses NSE Firewall)
     try:
         url = "https://raw.githubusercontent.com/kprohith/nse-stock-analysis/master/ind_nifty500list.csv"
         df = pd.read_csv(url)
@@ -28,26 +28,13 @@ def fetch_symbols():
     except Exception:
         pass
         
-    # 2. Try Official NSE URL
-    try:
-        url = "https://www.niftyindices.com/IndexConstituent/ind_nifty500list.csv"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        res = requests.get(url, headers=headers, timeout=5)
-        df = pd.read_csv(io.StringIO(res.text))
-        for col in df.columns:
-            if 'SYMBOL' in col.upper():
-                return df[col].astype(str).str.strip().tolist(), df
-    except Exception:
-        pass
-        
-    # 3. Unblockable Wikipedia Fallback (Nifty 50)
-    try:
-        st.toast("⚠️ NSE Firewall blocked Nifty 500. Falling back to Nifty 50 list to ensure app runs.")
-        dfs = pd.read_html("https://en.wikipedia.org/wiki/NIFTY_50")
-        df = dfs[1]
-        return df.astype(str).str.strip().tolist(), df
-    except Exception:
-        return list(), pd.DataFrame()
+    # Method 2: The Indestructible Fallback
+    # If the NSE completely blocks the server, use this internal list so the app NEVER breaks.
+    st.toast("⚠️ Cloud Firewall active. Using guaranteed internal Nifty fallback list.")
+    fallback =
+    
+    df = pd.DataFrame({'Symbol': fallback, 'Industry': ['Unknown'] * len(fallback)})
+    return fallback, df
 
 def fetch_pe_and_industry(symbol):
     yf_symbol = f"{symbol}.NS"
@@ -97,10 +84,6 @@ def calculate_rsi(prices, period=14):
 if st.button("🚀 Run Screener Now"):
     with st.spinner("Fetching Symbols..."):
         nifty_symbols, mapping_df = fetch_symbols()
-        
-    if not nifty_symbols:
-        st.error("CRITICAL ERROR: Failed to load symbols.")
-        st.stop()
 
     with st.spinner("Step 1: Fetching Fundamental Data (P/E & Industry)... this takes about 30 seconds."):
         fundamental_data = list()
@@ -121,8 +104,6 @@ if st.button("🚀 Run Screener Now"):
         fund_df['PE_Pass'] = np.where(fund_df['PE'].notna() & (condition1 | condition2), True, False)
         
         passed_df = fund_df.loc[fund_df['PE_Pass']]
-        
-        # ---> THE REAL FIX: I missed the right here last time <---
         passed_fundamental_symbols = passed_df.tolist()
         
     if not passed_fundamental_symbols:
@@ -130,7 +111,10 @@ if st.button("🚀 Run Screener Now"):
         st.stop()
 
     with st.spinner(f"Step 2: Checking Technicals for {len(passed_fundamental_symbols)} stocks..."):
-        yf_symbols =
+        yf_symbols = list()
+        for sym in passed_fundamental_symbols:
+            yf_symbols.append(f"{sym}.NS")
+            
         hist_data = yf.download(yf_symbols, period="1mo", group_by="ticker", progress=False)
         
         if hist_data.empty:
@@ -141,7 +125,11 @@ if st.button("🚀 Run Screener Now"):
         for symbol in passed_fundamental_symbols:
             yf_sym = f"{symbol}.NS"
             try:
-                df = hist_data[yf_sym].dropna() if len(passed_fundamental_symbols) > 1 else hist_data.dropna()
+                if len(passed_fundamental_symbols) > 1:
+                    df = hist_data[yf_sym].dropna()
+                else:
+                    df = hist_data.dropna()
+                    
                 if len(df) < 20: 
                     continue
                     
@@ -182,7 +170,7 @@ if st.button("🚀 Run Screener Now"):
         delivery_raw = get_last_5_trading_days_bhavcopy()
         
         if delivery_raw.empty:
-            st.warning("⚠️ NSE Firewall blocked Delivery Data. Showing stocks that passed Technical & Fundamental checks:")
+            st.warning("⚠️ NSE Firewall blocked Delivery Data on the cloud. Showing stocks that passed Technical & Fundamental checks:")
             final_df = pd.merge(tech_df, fund_df, on='Symbol', how='left').round(2)
             st.dataframe(final_df.sort_values(by='Return_5D_%', ascending=False), use_container_width=True)
             st.stop()
@@ -202,7 +190,6 @@ if st.button("🚀 Run Screener Now"):
             final_df = pd.merge(tech_df, avg_delivery, on='Symbol', how='left')
             final_df = pd.merge(final_df, fund_df, on='Symbol', how='left')
             
-            # ---> THE REAL FIX: I also missed the pointer here last time <---
             if 'Avg_Delivery_%' in final_df.columns:
                 delivery_mask = final_df > 45.0
                 final_screened = final_df.loc[delivery_mask].copy().round(2)
