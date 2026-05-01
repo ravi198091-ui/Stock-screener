@@ -39,7 +39,7 @@ def fetch_nifty500_symbols():
             
         # Clean column names to remove any invisible spaces
         df.columns = df.columns.str.strip()
-        # Strictly isolate the 'Symbol' column
+        # FIX: Point exactly to the 'Symbol' column
         symbols = df.astype(str).str.strip().tolist()
         return symbols, df
         
@@ -127,6 +127,8 @@ if st.button("🚀 Run Screener Now"):
         fund_df['PE_Pass'] = np.where(fund_df['PE'].notna() & (condition1 | condition2), True, False)
         
         passed_df = fund_df.loc[fund_df['PE_Pass']]
+        
+        # Pointing explicitly to the 'Symbol' column here as well
         passed_fundamental_symbols = passed_df.tolist()
 
     with st.spinner(f"Step 2: Checking Technicals for {len(passed_fundamental_symbols)} stocks..."):
@@ -162,8 +164,8 @@ if st.button("🚀 Run Screener Now"):
                 vol_pass = last_volume > (2 * avg_vol_20d)
                 rsi_pass = current_rsi > 50
                 ret_pass = return_5d >= 1.0
-
-if vol_pass and rsi_pass and ret_pass:
+                
+                if vol_pass and rsi_pass and ret_pass:
                     technical_results.append({
                         'Symbol': symbol, 
                         'Last_Close': round(current_close, 2),
@@ -174,13 +176,14 @@ if vol_pass and rsi_pass and ret_pass:
                     })
             except Exception:
                 continue
-tech_df = pd.DataFrame(technical_results)
+                
+        tech_df = pd.DataFrame(technical_results)
 
     if tech_df.empty:
         st.warning("No stocks passed the technical criteria today.")
         st.stop()
 
-        with st.spinner("Step 3: Analyzing Institutional Delivery Data..."):
+    with st.spinner("Step 3: Analyzing Institutional Delivery Data..."):
         delivery_raw = get_last_5_trading_days_bhavcopy()
         
         target_col = None
@@ -192,8 +195,8 @@ tech_df = pd.DataFrame(technical_results)
                     break
             if target_col:
                 break
-
-if target_col:
+        
+        if target_col:
             delivery_raw[target_col] = pd.to_numeric(delivery_raw[target_col], errors='coerce')
             avg_delivery = delivery_raw.groupby('SYMBOL')[target_col].mean().reset_index()
             avg_delivery.rename(columns={'SYMBOL': 'Symbol', target_col: 'Avg_Delivery_%'}, inplace=True)
@@ -201,6 +204,7 @@ if target_col:
             final_df = pd.merge(tech_df, avg_delivery, on='Symbol', how='left')
             final_df = pd.merge(final_df, fund_df, on='Symbol', how='left')
             
+            # FIX: Point exactly to the Delivery column for the > 45.0 check
             delivery_mask = final_df > 45.0
             final_screened = final_df.loc[delivery_mask].copy().round(2)
             
@@ -208,4 +212,3 @@ if target_col:
             st.dataframe(final_screened.sort_values(by='Avg_Delivery_%', ascending=False), use_container_width=True)
         else:
             st.error("Could not find delivery data from NSE.")
-            
