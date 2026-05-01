@@ -17,38 +17,39 @@ st.markdown("Screens for: PE < 20 (or Industry Avg), Vol > 2x 20-Day SMA, RSI > 
 # FUNCTIONS
 # ==========================================
 @st.cache_data(ttl=3600)
-def fetch_nifty500_symbols():
-    # 4-Layer Fallback System to bypass NSE Cloud Firewalls
-    urls =
-    
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-    
-    for url in urls:
-        try:
-            response = requests.get(url, headers=headers, timeout=7)
-            if response.status_code == 200:
-                df = pd.read_csv(io.StringIO(response.text))
-                df.columns = df.columns.str.strip()
-                
-                # Handle varying column names across different mirrors
-                symbol_col = next((col for col in df.columns if 'SYMBOL' in col.upper()), None)
-                if symbol_col:
-                    return df[symbol_col].astype(str).str.strip().tolist(), df
-        except Exception:
-            continue
-            
-    # Ultimate Fail-safe: Use nselib to forcefully grab active equities
+def fetch_symbols():
+    # Method 1: Official Index CSV archive
+    try:
+        url = "https://archives.nseindia.com/content/indices/ind_nifty500list.csv"
+        df = pd.read_csv(url)
+        if 'Symbol' in df.columns:
+            return df.astype(str).str.strip().tolist()
+    except:
+        pass
+        
+    # Method 2: Secondary URL with masked headers
+    try:
+        url = "https://www.niftyindices.com/IndexConstituent/ind_nifty500list.csv"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        res = requests.get(url, headers=headers, timeout=5)
+        df = pd.read_csv(io.StringIO(res.text))
+        if 'Symbol' in df.columns:
+            return df.astype(str).str.strip().tolist()
+    except:
+        pass
+        
+    # Method 3: Direct NSELib equity extraction
     try:
         df = capital_market.equity_list()
-        df.columns = df.columns.str.strip()
-        symbol_col = next((col for col in df.columns if 'SYMBOL' in col.upper()), None)
-        if symbol_col:
-            # Limit to 500 to keep the screener fast
-            return df[symbol_col].astype(str).str.strip().tolist()[:500], df
-    except Exception:
+        if 'SYMBOL' in df.columns:
+            return df.astype(str).str.strip().tolist()[:500]
+    except:
         pass
-
-    return list(), pd.DataFrame()
+        
+    # Method 4: Indestructible Fallback
+    # If the NSE completely blocks the Streamlit Cloud Server, use this hardcoded list so the app NEVER breaks.
+    st.toast("⚠️ NSE Cloud Firewall active. Using hardcoded Nifty 50 fallback list.")
+    return
 
 def fetch_pe_and_industry(symbol):
     yf_symbol = f"{symbol}.NS"
@@ -63,7 +64,7 @@ def fetch_pe_and_industry(symbol):
 
 @st.cache_data(ttl=3600)
 def get_last_5_trading_days_bhavcopy():
-    bhavcopies = list()
+    bhavcopies =
     days_checked = 0
     current_date = datetime.now()
     
@@ -96,22 +97,17 @@ def calculate_rsi(prices, period=14):
 # MAIN EXECUTION
 # ==========================================
 if st.button("🚀 Run Screener Now"):
-    with st.spinner("Fetching Nifty 500 Symbols..."):
-        nifty500_symbols, mapping_df = fetch_nifty500_symbols()
+    with st.spinner("Fetching Symbols..."):
+        nifty_symbols = fetch_symbols()
         
-    if not nifty500_symbols:
-        st.error("CRITICAL ERROR: Failed to load symbols from all 5 backup sources. NSE servers may be down.")
-        st.stop()
-
     with st.spinner("Step 1: Fetching Fundamental Data (P/E & Industry)... this takes about 30 seconds."):
-        fundamental_data = list()
+        fundamental_data =
         with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
-            results = executor.map(fetch_pe_and_industry, nifty500_symbols)
+            results = executor.map(fetch_pe_and_industry, nifty_symbols)
             for res in results:
                 fundamental_data.append(res)
                 
         fund_df = pd.DataFrame(fundamental_data)
-        
         fund_df['PE'] = pd.to_numeric(fund_df['PE'], errors='coerce')
         
         industry_pe = fund_df.groupby('Industry')['PE'].mean().reset_index()
@@ -123,8 +119,6 @@ if st.button("🚀 Run Screener Now"):
         fund_df['PE_Pass'] = np.where(fund_df['PE'].notna() & (condition1 | condition2), True, False)
         
         passed_df = fund_df.loc[fund_df['PE_Pass']]
-        
-        # FIX 1: Pointing explicitly to the 'Symbol' column
         passed_fundamental_symbols = passed_df.tolist()
         
     if not passed_fundamental_symbols:
@@ -132,25 +126,18 @@ if st.button("🚀 Run Screener Now"):
         st.stop()
 
     with st.spinner(f"Step 2: Checking Technicals for {len(passed_fundamental_symbols)} stocks..."):
-        yf_symbols = list()
-        for sym in passed_fundamental_symbols:
-            yf_symbols.append(f"{sym}.NS")
-            
+        yf_symbols =
         hist_data = yf.download(yf_symbols, period="1mo", group_by="ticker", progress=False)
         
         if hist_data.empty:
-             st.warning("Failed to download historical price data from Yahoo Finance.")
+             st.error("Failed to download historical price data from Yahoo Finance.")
              st.stop()
              
-        technical_results = list()
+        technical_results =
         for symbol in passed_fundamental_symbols:
             yf_sym = f"{symbol}.NS"
             try:
-                if len(passed_fundamental_symbols) > 1:
-                    df = hist_data[yf_sym].dropna()
-                else:
-                    df = hist_data.dropna()
-                    
+                df = hist_data[yf_sym].dropna() if len(passed_fundamental_symbols) > 1 else hist_data.dropna()
                 if len(df) < 20: 
                     continue
                     
@@ -190,14 +177,19 @@ if st.button("🚀 Run Screener Now"):
     with st.spinner("Step 3: Analyzing Institutional Delivery Data..."):
         delivery_raw = get_last_5_trading_days_bhavcopy()
         
+        # If the NSE firewall completely blocks the cloud server from downloading delivery data, 
+        # do not crash the app. Output the stocks that successfully passed Steps 1 and 2 instead.
+        if delivery_raw.empty:
+            st.warning("⚠️ NSE Firewall blocked Delivery Data on this cloud server. Showing stocks that passed Technical & Fundamental checks:")
+            final_df = pd.merge(tech_df, fund_df, on='Symbol', how='left').round(2)
+            st.dataframe(final_df.sort_values(by='Return_5D_%', ascending=False), use_container_width=True)
+            st.stop()
+
         target_col = None
         possible_cols = ('DELIV_PER', 'DELIVERY_PER', 'DELIV_PER_TO_TOT_TRQ')
         for col in delivery_raw.columns:
-            for p_col in possible_cols:
-                if p_col in col.upper():
-                    target_col = col
-                    break
-            if target_col:
+            if any(p_col in col.upper() for p_col in possible_cols):
+                target_col = col
                 break
         
         if target_col:
@@ -208,7 +200,6 @@ if st.button("🚀 Run Screener Now"):
             final_df = pd.merge(tech_df, avg_delivery, on='Symbol', how='left')
             final_df = pd.merge(final_df, fund_df, on='Symbol', how='left')
             
-            # FIX 2: Point exactly to the Delivery column for the math check
             delivery_mask = final_df > 45.0
             final_screened = final_df.loc[delivery_mask].copy().round(2)
             
