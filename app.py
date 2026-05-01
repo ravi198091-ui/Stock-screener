@@ -24,11 +24,11 @@ def fetch_nifty500_symbols():
         response = requests.get(url, headers=headers, timeout=10)
         if response.status_code == 200:
             df = pd.read_csv(io.StringIO(response.text))
-            symbols = df.str.strip().tolist()
+            symbols = df.Symbol.astype(str).str.strip().tolist()
             return symbols, df
-        return, pd.DataFrame()
+        return list(), pd.DataFrame()
     except Exception:
-        return, pd.DataFrame()
+        return list(), pd.DataFrame()
 
 def fetch_pe_and_industry(symbol):
     yf_symbol = f"{symbol}.NS"
@@ -43,7 +43,7 @@ def fetch_pe_and_industry(symbol):
 
 @st.cache_data(ttl=3600)
 def get_last_5_trading_days_bhavcopy():
-    bhavcopies =
+    bhavcopies = list()
     days_checked = 0
     current_date = datetime.now()
     
@@ -84,7 +84,7 @@ if st.button("🚀 Run Screener Now"):
         st.stop()
 
     with st.spinner("Step 1: Fetching Fundamental Data (P/E & Industry)... this takes about 30 seconds."):
-        fundamental_data =
+        fundamental_data = list()
         with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
             results = executor.map(fetch_pe_and_industry, nifty500_symbols)
             for res in results:
@@ -95,24 +95,35 @@ if st.button("🚀 Run Screener Now"):
         industry_pe.rename(columns={'PE': 'Industry_Avg_PE'}, inplace=True)
         fund_df = fund_df.merge(industry_pe, on='Industry', how='left')
         
-        fund_df['PE_Pass'] = np.where(
-            fund_df['PE'].notna() & ((fund_df['PE'] < 20) | (fund_df['PE'] < fund_df['Industry_Avg_PE'])), 
-            True, False
-        )
-        passed_fundamental_symbols = fund_df[fund_df['PE_Pass']].tolist()
+        condition1 = fund_df['PE'] < 20
+        condition2 = fund_df['PE'] < fund_df['Industry_Avg_PE']
+        fund_df['PE_Pass'] = np.where(fund_df['PE'].notna() & (condition1 | condition2), True, False)
+        
+        passed_df = fund_df.loc[fund_df['PE_Pass']]
+        passed_fundamental_symbols = passed_df.tolist()
 
     with st.spinner(f"Step 2: Checking Technicals for {len(passed_fundamental_symbols)} stocks..."):
-        yf_symbols =
+        yf_symbols = list()
+        for sym in passed_fundamental_symbols:
+            yf_symbols.append(f"{sym}.NS")
+            
         hist_data = yf.download(yf_symbols, period="1mo", group_by="ticker", progress=False)
         
-        technical_results =
+        technical_results = list()
         for symbol in passed_fundamental_symbols:
             yf_sym = f"{symbol}.NS"
             try:
-                df = hist_data[yf_sym].dropna() if len(passed_fundamental_symbols) > 1 else hist_data.dropna()
-                if len(df) < 20: continue
+                if len(passed_fundamental_symbols) > 1:
+                    df = hist_data[yf_sym].dropna()
+                else:
+                    df = hist_data.dropna()
                     
-                close_prices, volumes = df['Close'], df['Volume']
+                if len(df) < 20: 
+                    continue
+                    
+                close_prices = df['Close']
+                volumes = df['Volume']
+                
                 current_close = float(close_prices.iloc[-1])
                 close_5d_ago = float(close_prices.iloc[-6])
                 return_5d = ((current_close - close_5d_ago) / close_5d_ago) * 100
@@ -138,7 +149,16 @@ if st.button("🚀 Run Screener Now"):
 
     with st.spinner("Step 3: Analyzing Institutional Delivery Data..."):
         delivery_raw = get_last_5_trading_days_bhavcopy()
-        target_col = next((col for col in delivery_raw.columns if any(x in col for x in)), None)
+        
+        target_col = None
+        possible_cols = ('DELIV_PER', 'DELIV_QTY', 'DELIVERY')
+        for col in delivery_raw.columns:
+            for p_col in possible_cols:
+                if p_col in col:
+                    target_col = col
+                    break
+            if target_col:
+                break
         
         if target_col:
             delivery_raw[target_col] = pd.to_numeric(delivery_raw[target_col], errors='coerce')
@@ -148,7 +168,8 @@ if st.button("🚀 Run Screener Now"):
             final_df = pd.merge(tech_df, avg_delivery, on='Symbol', how='left')
             final_df = pd.merge(final_df, fund_df, on='Symbol', how='left')
             
-            final_screened = final_df > 45.0].copy().round(2)
+            delivery_mask = final_df > 45.0
+            final_screened = final_df.loc[delivery_mask].copy().round(2)
             
             st.success(f"Screening Complete! Found {len(final_screened)} stocks.")
             st.dataframe(final_screened.sort_values(by='Avg_Delivery_%', ascending=False), use_container_width=True)
