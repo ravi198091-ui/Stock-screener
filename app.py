@@ -146,7 +146,7 @@ if st.button("🚀 Run Screener Now"):
             avg_delivery.rename(columns={'SYMBOL': 'Symbol', target_col: 'Avg_Delivery_%'}, inplace=True)
             
             final_df = pd.merge(tech_df, avg_delivery, on='Symbol', how='left')
-            final_df = pd.merge(final_df, fund_df], on='Symbol', how='left')
+            final_df = pd.merge(final_df, fund_df, on='Symbol', how='left')
             
             final_screened = final_df > 45.0].copy().round(2)
             
