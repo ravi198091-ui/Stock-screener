@@ -29,10 +29,9 @@ def fetch_symbols():
         pass
         
     # Method 2: The Indestructible Fallback
-    # If the NSE completely blocks the server, use this internal list so the app NEVER breaks.
+    # If the cloud completely blocks the server, use this internal list so the app NEVER breaks.
     st.toast("⚠️ Cloud Firewall active. Using guaranteed internal Nifty fallback list.")
     fallback =
-    
     df = pd.DataFrame({'Symbol': fallback, 'Industry': ['Unknown'] * len(fallback)})
     return fallback, df
 
