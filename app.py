@@ -91,6 +91,10 @@ if st.button("🚀 Run Screener Now"):
                 fundamental_data.append(res)
                 
         fund_df = pd.DataFrame(fundamental_data)
+        
+        # --- THE FIX: Force PE to be numeric so it can calculate the average safely ---
+        fund_df['PE'] = pd.to_numeric(fund_df['PE'], errors='coerce')
+        
         industry_pe = fund_df.groupby('Industry')['PE'].mean().reset_index()
         industry_pe.rename(columns={'PE': 'Industry_Avg_PE'}, inplace=True)
         fund_df = fund_df.merge(industry_pe, on='Industry', how='left')
@@ -132,46 +136,4 @@ if st.button("🚀 Run Screener Now"):
                 avg_vol_20d = float(volumes.rolling(window=20).mean().iloc[-2])
                 current_rsi = float(calculate_rsi(close_prices).iloc[-1])
                 
-                if last_volume > (2 * avg_vol_20d) and current_rsi > 50 and return_5d >= 1.0:
-                    technical_results.append({
-                        'Symbol': symbol, 'Last_Close': round(current_close, 2),
-                        'Return_5D_%': round(return_5d, 2), 'RSI_14': round(current_rsi, 2),
-                        'Last_Volume': last_volume, 'Avg_Vol_20D': round(avg_vol_20d, 0)
-                    })
-            except Exception:
-                continue
-                
-        tech_df = pd.DataFrame(technical_results)
-
-    if tech_df.empty:
-        st.warning("No stocks passed the technical criteria today.")
-        st.stop()
-
-    with st.spinner("Step 3: Analyzing Institutional Delivery Data..."):
-        delivery_raw = get_last_5_trading_days_bhavcopy()
-        
-        target_col = None
-        possible_cols = ('DELIV_PER', 'DELIV_QTY', 'DELIVERY')
-        for col in delivery_raw.columns:
-            for p_col in possible_cols:
-                if p_col in col:
-                    target_col = col
-                    break
-            if target_col:
-                break
-        
-        if target_col:
-            delivery_raw[target_col] = pd.to_numeric(delivery_raw[target_col], errors='coerce')
-            avg_delivery = delivery_raw.groupby('SYMBOL')[target_col].mean().reset_index()
-            avg_delivery.rename(columns={'SYMBOL': 'Symbol', target_col: 'Avg_Delivery_%'}, inplace=True)
-            
-            final_df = pd.merge(tech_df, avg_delivery, on='Symbol', how='left')
-            final_df = pd.merge(final_df, fund_df, on='Symbol', how='left')
-            
-            delivery_mask = final_df > 45.0
-            final_screened = final_df.loc[delivery_mask].copy().round(2)
-            
-            st.success(f"Screening Complete! Found {len(final_screened)} stocks.")
-            st.dataframe(final_screened.sort_values(by='Avg_Delivery_%', ascending=False), use_container_width=True)
-        else:
-            st.error("Could not find delivery data from NSE.")
+                if last_volume > (2 * avg_vol_
