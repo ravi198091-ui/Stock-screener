@@ -24,7 +24,7 @@ def fetch_nifty500_symbols():
     fallback_url = "https://raw.githubusercontent.com/kprohith/nse-stock-analysis/master/ind_nifty500list.csv"
     
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     }
     
     try:
@@ -37,6 +37,9 @@ def fetch_nifty500_symbols():
             response = requests.get(fallback_url, timeout=10)
             df = pd.read_csv(io.StringIO(response.text))
             
+        # Clean column names to remove any invisible spaces
+        df.columns = df.columns.str.strip()
+        # Strictly isolate the 'Symbol' column
         symbols = df.astype(str).str.strip().tolist()
         return symbols, df
         
@@ -45,6 +48,7 @@ def fetch_nifty500_symbols():
             # If network fails completely, try fallback one last time
             response = requests.get(fallback_url, timeout=10)
             df = pd.read_csv(io.StringIO(response.text))
+            df.columns = df.columns.str.strip()
             symbols = df.astype(str).str.strip().tolist()
             return symbols, df
         except Exception:
@@ -158,8 +162,8 @@ if st.button("🚀 Run Screener Now"):
                 vol_pass = last_volume > (2 * avg_vol_20d)
                 rsi_pass = current_rsi > 50
                 ret_pass = return_5d >= 1.0
-                
-                if vol_pass and rsi_pass and ret_pass:
+
+if vol_pass and rsi_pass and ret_pass:
                     technical_results.append({
                         'Symbol': symbol, 
                         'Last_Close': round(current_close, 2),
@@ -170,14 +174,13 @@ if st.button("🚀 Run Screener Now"):
                     })
             except Exception:
                 continue
-                
-        tech_df = pd.DataFrame(technical_results)
+tech_df = pd.DataFrame(technical_results)
 
     if tech_df.empty:
         st.warning("No stocks passed the technical criteria today.")
         st.stop()
 
-    with st.spinner("Step 3: Analyzing Institutional Delivery Data..."):
+        with st.spinner("Step 3: Analyzing Institutional Delivery Data..."):
         delivery_raw = get_last_5_trading_days_bhavcopy()
         
         target_col = None
@@ -189,8 +192,8 @@ if st.button("🚀 Run Screener Now"):
                     break
             if target_col:
                 break
-        
-        if target_col:
+
+if target_col:
             delivery_raw[target_col] = pd.to_numeric(delivery_raw[target_col], errors='coerce')
             avg_delivery = delivery_raw.groupby('SYMBOL')[target_col].mean().reset_index()
             avg_delivery.rename(columns={'SYMBOL': 'Symbol', target_col: 'Avg_Delivery_%'}, inplace=True)
@@ -205,3 +208,4 @@ if st.button("🚀 Run Screener Now"):
             st.dataframe(final_screened.sort_values(by='Avg_Delivery_%', ascending=False), use_container_width=True)
         else:
             st.error("Could not find delivery data from NSE.")
+            
