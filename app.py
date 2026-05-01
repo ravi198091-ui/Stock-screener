@@ -39,7 +39,8 @@ def fetch_nifty500_symbols():
             
         # Clean column names to remove any invisible spaces
         df.columns = df.columns.str.strip()
-        # FIX: Point exactly to the 'Symbol' column
+        
+        # THE FIX: Point EXACTLY to the 'Symbol' column
         symbols = df.astype(str).str.strip().tolist()
         return symbols, df
         
@@ -49,6 +50,8 @@ def fetch_nifty500_symbols():
             response = requests.get(fallback_url, timeout=10)
             df = pd.read_csv(io.StringIO(response.text))
             df.columns = df.columns.str.strip()
+            
+            # THE FIX: Point EXACTLY to the 'Symbol' column
             symbols = df.astype(str).str.strip().tolist()
             return symbols, df
         except Exception:
@@ -128,7 +131,7 @@ if st.button("🚀 Run Screener Now"):
         
         passed_df = fund_df.loc[fund_df['PE_Pass']]
         
-        # Pointing explicitly to the 'Symbol' column here as well
+        # Pointing explicitly to the 'Symbol' column here
         passed_fundamental_symbols = passed_df.tolist()
 
     with st.spinner(f"Step 2: Checking Technicals for {len(passed_fundamental_symbols)} stocks..."):
@@ -138,6 +141,10 @@ if st.button("🚀 Run Screener Now"):
             
         hist_data = yf.download(yf_symbols, period="1mo", group_by="ticker", progress=False)
         
+        if hist_data.empty:
+             st.warning("Failed to download historical price data.")
+             st.stop()
+             
         technical_results = list()
         for symbol in passed_fundamental_symbols:
             yf_sym = f"{symbol}.NS"
@@ -187,7 +194,8 @@ if st.button("🚀 Run Screener Now"):
         delivery_raw = get_last_5_trading_days_bhavcopy()
         
         target_col = None
-        possible_cols = ('DELIV_PER', 'DELIV_QTY', 'DELIVERY')
+        # Ensuring we strictly pick percentage columns, not total quantity
+        possible_cols = ('DELIV_PER', 'DELIVERY_PER', 'DELIV_PER_TO_TOT_TRQ')
         for col in delivery_raw.columns:
             for p_col in possible_cols:
                 if p_col in col:
@@ -204,11 +212,11 @@ if st.button("🚀 Run Screener Now"):
             final_df = pd.merge(tech_df, avg_delivery, on='Symbol', how='left')
             final_df = pd.merge(final_df, fund_df, on='Symbol', how='left')
             
-            # FIX: Point exactly to the Delivery column for the > 45.0 check
+            # Specifically target the Delivery column for the math check
             delivery_mask = final_df > 45.0
             final_screened = final_df.loc[delivery_mask].copy().round(2)
             
             st.success(f"Screening Complete! Found {len(final_screened)} stocks.")
             st.dataframe(final_screened.sort_values(by='Avg_Delivery_%', ascending=False), use_container_width=True)
         else:
-            st.error("Could not find delivery data from NSE.")
+            st.error("Could not find delivery percentage data from NSE.")
