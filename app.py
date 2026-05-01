@@ -18,18 +18,37 @@ st.markdown("Screens for: PE < 20 (or Industry Avg), Vol > 2x 20-Day SMA, RSI > 
 # ==========================================
 @st.cache_data(ttl=3600)
 def fetch_nifty500_symbols():
+    # Primary NSE URL
     url = "https://www.niftyindices.com/IndexConstituent/ind_nifty500list.csv"
-    headers = {"User-Agent": "Mozilla/5.0"}
+    # Fallback GitHub Mirror URL (Bypasses NSE Cloud Blocks)
+    fallback_url = "https://raw.githubusercontent.com/kprohith/nse-stock-analysis/master/ind_nifty500list.csv"
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
+    
     try:
+        # Try official NSE site first
         response = requests.get(url, headers=headers, timeout=10)
         if response.status_code == 200:
             df = pd.read_csv(io.StringIO(response.text))
-            # Specify the Symbol column
+        else:
+            # Use fallback if NSE blocks the cloud server
+            response = requests.get(fallback_url, timeout=10)
+            df = pd.read_csv(io.StringIO(response.text))
+            
+        symbols = df.astype(str).str.strip().tolist()
+        return symbols, df
+        
+    except Exception:
+        try:
+            # If network fails completely, try fallback one last time
+            response = requests.get(fallback_url, timeout=10)
+            df = pd.read_csv(io.StringIO(response.text))
             symbols = df.astype(str).str.strip().tolist()
             return symbols, df
-        return list(), pd.DataFrame()
-    except Exception:
-        return list(), pd.DataFrame()
+        except Exception:
+            return list(), pd.DataFrame()
 
 def fetch_pe_and_industry(symbol):
     yf_symbol = f"{symbol}.NS"
@@ -104,8 +123,6 @@ if st.button("🚀 Run Screener Now"):
         fund_df['PE_Pass'] = np.where(fund_df['PE'].notna() & (condition1 | condition2), True, False)
         
         passed_df = fund_df.loc[fund_df['PE_Pass']]
-        
-        # --- FIX 1: Point exactly to the 'Symbol' column ---
         passed_fundamental_symbols = passed_df.tolist()
 
     with st.spinner(f"Step 2: Checking Technicals for {len(passed_fundamental_symbols)} stocks..."):
@@ -180,8 +197,7 @@ if st.button("🚀 Run Screener Now"):
             
             final_df = pd.merge(tech_df, avg_delivery, on='Symbol', how='left')
             final_df = pd.merge(final_df, fund_df, on='Symbol', how='left')
-
-# --- FIX 2: Point exactly to the 'Avg_Delivery_%' column ---
+            
             delivery_mask = final_df > 45.0
             final_screened = final_df.loc[delivery_mask].copy().round(2)
             
