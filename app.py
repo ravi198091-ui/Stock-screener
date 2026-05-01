@@ -108,7 +108,7 @@ if st.button("🚀 Run Screener Now"):
         
         passed_df = fund_df.loc[fund_df['PE_Pass']]
         
-        # --- THE REAL FIX IS HERE ---
+        # --- THE FIX: Explicitly selecting the 'Symbol' column before turning to list ---
         passed_fundamental_symbols = passed_df.tolist()
         
     if not passed_fundamental_symbols:
@@ -196,6 +196,7 @@ if st.button("🚀 Run Screener Now"):
             final_df = pd.merge(final_df, fund_df, on='Symbol', how='left')
             
             if 'Avg_Delivery_%' in final_df.columns:
+                # --- THE FIX: Explicitly selecting the column for the math check ---
                 delivery_mask = final_df > 45.0
                 final_screened = final_df.loc[delivery_mask].copy().round(2)
                 
