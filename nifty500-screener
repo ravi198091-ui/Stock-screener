@@ -1,1 +1,12 @@
-
+nifty500_screener.py
+requirements.txt
+README.md
+QUICKSTART.md
+DEPLOYMENT.md
+EXAMPLES.md
+INDEX.txt
+INSTALLATION_SUMMARY.txt
+test_screener.py
+run_screener.bat
+run_screener.sh
+.gitignore
